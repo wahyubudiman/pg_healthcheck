@@ -1,0 +1,8 @@
+# Ignore generated health check reports
+*_hc.md
+*_hc-cnpg.md
+
+# Ignore temporary logs and run files
+*.log
+*.log.tmp
+*.pid

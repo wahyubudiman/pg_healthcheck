@@ -1,0 +1,522 @@
+https://github.com/rapidloop/pgmetrics/blob/619def77805a6f1fef2727ad6fc90d0bd2e5a351/collector/collect.go
+
+qry from pgmetric:
+
+SELECT name, setting, COALESCE(boot_val,''), source,
+			COALESCE(sourcefile,''), COALESCE(sourceline,0),
+			pending_restart
+		  FROM pg_settings
+		  ORDER BY name ASC
+		  
+SELECT archived_count, 
+			COALESCE(last_archived_wal, ''),
+			COALESCE(EXTRACT(EPOCH FROM last_archived_time)::bigint, 0),
+			failed_count,
+			COALESCE(last_failed_wal, ''),
+			COALESCE(EXTRACT(EPOCH FROM last_failed_time)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+		  FROM pg_stat_archiver
+		  
+		  
+SELECT COALESCE(inet_client_addr() = inet_server_addr(), TRUE)
+			OR (inet_server_addr() << '127.0.0.0/8' AND inet_client_addr() << '127.0.0.0/8')
+			
+SELECT checkpoints_timed, checkpoints_req, checkpoint_write_time,
+			checkpoint_sync_time, buffers_checkpoint, buffers_clean, maxwritten_clean,
+			buffers_backend, buffers_backend_fsync, buffers_alloc, stats_reset
+		  FROM pg_stat_bgwriter
+		  
+SELECT usename, application_name,
+			COALESCE(client_hostname::text, client_addr::text, ''), 
+			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
+			backend_xmin, COALESCE(state, ''),
+			COALESCE(sent_lsn::text, ''),
+			COALESCE(write_lsn::text, ''),
+			COALESCE(flush_lsn::text, ''),
+			COALESCE(replay_lsn::text, ''),
+			COALESCE(EXTRACT(EPOCH FROM write_lag)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM flush_lag)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM replay_lag)::bigint, 0),
+			COALESCE(sync_priority, -1),
+			COALESCE(sync_state, ''),
+			@reply_time@,
+			pid
+		  FROM pg_stat_replication
+		  ORDER BY pid ASC
+		  
+
+SELECT usename, application_name,
+			COALESCE(client_hostname::text, client_addr::text, ''), 
+			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
+			backend_xmin, COALESCE(state, ''),
+			COALESCE(sent_location::text, ''),
+			COALESCE(write_location::text, ''),
+			COALESCE(flush_location::text, ''),
+			COALESCE(replay_location::text, ''),
+			COALESCE(sync_priority, -1),
+			COALESCE(sync_state, ''),
+			pid
+		  FROM pg_stat_replication
+		  ORDER BY pid ASC
+		  
+		  
+SELECT status, receive_start_lsn, receive_start_tli, written_lsn,
+			flushed_lsn, received_tli, last_msg_send_time, last_msg_receipt_time,
+			latest_end_lsn,
+			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
+			COALESCE(slot_name, ''), conninfo, @sender_host@
+		  FROM pg_stat_wal_receiver
+		  
+		  
+SELECT pg_is_in_recovery(),
+			COALESCE(pg_last_wal_receive_lsn()::text, ''),
+			COALESCE(pg_last_wal_replay_lsn()::text, ''),
+			COALESCE(EXTRACT(EPOCH FROM pg_last_xact_replay_timestamp())::bigint, 0)
+			
+			
+SELECT pg_is_wal_replay_paused()
+
+
+SELECT pg_current_wal_flush_lsn(),
+				pg_current_wal_insert_lsn(), pg_current_wal_lsn()
+				
+				
+SELECT pg_tablespace_size($1)
+
+SELECT pg_database_size($1)
+
+SELECT pg_table_size($1)
+
+SELECT pg_total_relation_size($1)
+
+	// available only if "track_commit_timestamp" is set to "on"
+SELECT xid, COALESCE(EXTRACT(EPOCH FROM timestamp)::bigint, 0)
+			FROM pg_last_committed_xact()
+			
+			
+getStartTime:
+SELECT EXTRACT(EPOCH FROM pg_postmaster_start_time())::bigint
+
+v96:
+SELECT system_identifier FROM pg_control_system()
+SELECT checkpoint_location, prior_location, redo_location, timeline_id,
+			next_xid, oldest_xid, oldest_active_xid,
+			COALESCE(EXTRACT(EPOCH FROM checkpoint_time)::bigint, 0)
+		  FROM pg_control_checkpoint()
+		  
+		  
+v10:
+SELECT checkpoint_lsn, prior_lsn, redo_lsn, timeline_id,
+			next_xid, oldest_xid, oldest_active_xid,
+			COALESCE(EXTRACT(EPOCH FROM checkpoint_time)::bigint, 0)
+		  FROM pg_control_checkpoint()
+		  
+		  
+v11:
+SELECT checkpoint_lsn, redo_lsn, timeline_id,
+			next_xid, oldest_xid, oldest_active_xid,
+			COALESCE(EXTRACT(EPOCH FROM checkpoint_time)::bigint, 0)
+		  FROM pg_control_checkpoint()
+		  
+		  
+		  
+SELECT COALESCE(datname, ''), COALESCE(usename, ''),
+			COALESCE(application_name, ''), COALESCE(pid, 0),
+			COALESCE(client_hostname::text, client_addr::text, ''),
+			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM xact_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM query_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
+			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
+			COALESCE(state, ''), COALESCE(backend_xid, ''),
+			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1),
+			@queryid@
+		  FROM pg_stat_activity
+if c.version >= pgv14 { // query_id only in pg >= 14
+		q = strings.Replace(q, `@queryid@`, `COALESCE(query_id, 0)`, 1)
+	} else {
+		q = strings.Replace(q, `@queryid@`, `0`, 1)
+	}
+	if c.version >= pgv10 {
+		q += " WHERE backend_type='client backend'"
+	}
+	q += " ORDER BY pid ASC"
+	
+	
+SELECT D.oid, D.datname, D.datdba, D.dattablespace, D.datconnlimit,
+			age(D.datfrozenxid), S.numbackends, S.xact_commit, S.xact_rollback,
+			S.blks_read, S.blks_hit, S.tup_returned, S.tup_fetched,
+			S.tup_inserted, S.tup_updated, S.tup_deleted, S.conflicts,
+			S.temp_files, S.temp_bytes, S.deadlocks, S.blk_read_time,
+			S.blk_write_time,
+			COALESCE(EXTRACT(EPOCH FROM S.stats_reset)::bigint, 0),
+			@checksum_failures@, @checksum_last_failure@,
+			S.session_time, S.active_time, S.idle_in_transaction_time,
+			S.sessions, S.sessions_abandoned, S.sessions_fatal, S.sessions_killed
+		  FROM pg_database AS D JOIN pg_stat_database AS S
+			ON D.oid = S.datid
+		  WHERE (NOT D.datistemplate) @only@
+		  ORDER BY D.oid ASC
+		  
+		  
+if c.version < pgv12 { // checksum_failures and checksum_last_failure only in pg >= 12
+		q = strings.Replace(q, `@checksum_failures@`, `0`, 1)
+		q = strings.Replace(q, `@checksum_last_failure@`, `0`, 1)
+	} else {
+		q = strings.Replace(q, `@checksum_failures@`, `COALESCE(S.checksum_failures, 0)`, 1)
+		q = strings.Replace(q, `@checksum_last_failure@`, `COALESCE(EXTRACT(EPOCH from S.checksum_last_failure)::bigint, 0)`, 1)
+	}
+	
+if c.version < pgv14 {
+		// these columns only in pg >= 14
+		q = strings.Replace(q, `S.session_time`, `0`, 1)
+		q = strings.Replace(q, `S.active_time`, `0`, 1)
+		q = strings.Replace(q, `S.idle_in_transaction_time`, `0`, 1)
+		q = strings.Replace(q, `S.sessions`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_abandoned`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_fatal`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_killed`, `0`, 1)
+	}
+	
+	
+	
+SELECT oid, spcname, pg_get_userbyid(spcowner),
+			pg_tablespace_location(oid)
+		  FROM pg_tablespace
+		  ORDER BY oid ASC
+		  
+		  
+SELECT current_database()
+
+
+q := `SELECT S.relid, S.schemaname, S.relname, current_database(),
+			S.seq_scan, S.seq_tup_read,
+			COALESCE(S.idx_scan, 0), COALESCE(S.idx_tup_fetch, 0), S.n_tup_ins,
+			S.n_tup_upd, S.n_tup_del, S.n_tup_hot_upd, S.n_live_tup,
+			S.n_dead_tup, S.n_mod_since_analyze,
+			COALESCE(EXTRACT(EPOCH FROM S.last_vacuum)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM S.last_autovacuum)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM S.last_analyze)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM S.last_autoanalyze)::bigint, 0),
+			S.vacuum_count, S.autovacuum_count, S.analyze_count,
+			S.autoanalyze_count, IO.heap_blks_read, IO.heap_blks_hit,
+			COALESCE(IO.idx_blks_read, 0), COALESCE(IO.idx_blks_hit, 0),
+			COALESCE(IO.toast_blks_read, 0), COALESCE(IO.toast_blks_hit, 0),
+			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
+			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
+			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), ''),
+			S.n_ins_since_vacuum
+		  FROM pg_stat_user_tables AS S
+			JOIN pg_statio_user_tables AS IO
+			ON S.relid = IO.relid
+			JOIN pg_class AS C
+			ON C.oid = S.relid
+		  ORDER BY S.relid ASC`
+	if c.version < pgv94 { // n_mod_since_analyze only in v9.4+
+		q = strings.Replace(q, "S.n_mod_since_analyze", "0", 1)
+	}
+	if c.version < pgv10 { // relispartition only in v10+
+		q = strings.Replace(q, "C.relispartition", "false", 1)
+	}
+	if c.version < pgv13 { // n_ins_since_vacuum only in pg >= 13
+		q = strings.Replace(q, "S.n_ins_since_vacuum", "0", 1)
+	}
+	
+	
+	
+getIndexes:
+q := `SELECT S.relid, S.indexrelid, S.schemaname, S.relname, S.indexrelname,
+			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
+			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
+			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
+			C.relnatts, AM.amname, C.reltablespace
+		FROM pg_stat_user_indexes AS S
+			JOIN pg_class AS C
+			ON S.indexrelid = C.oid
+			JOIN pg_am AS AM
+			ON C.relam = AM.oid
+		ORDER BY S.relid ASC`
+		
+		
+		
+SELECT indexrelid, pg_get_indexdef(indexrelid) FROM pg_stat_user_indexes
+
+
+getSequences:
+SELECT relid, schemaname, relname, current_database(), blks_read,
+			blks_hit
+		  FROM pg_statio_user_sequences
+		  ORDER BY relid ASC
+		  
+		  
+
+getUserFunctions:
+SELECT funcid, schemaname, funcname, current_database(), calls,
+			total_time, self_time
+		  FROM pg_stat_user_functions
+		  ORDER BY funcid ASC
+		  
+		  
+		  
+getVacuumProgress:
+SELECT datname, COALESCE(relid, 0), COALESCE(phase, ''),
+			COALESCE(heap_blks_total, 0), COALESCE(heap_blks_scanned, 0),
+			COALESCE(heap_blks_vacuumed, 0), COALESCE(index_vacuum_count, 0),
+			COALESCE(max_dead_tuples, 0), COALESCE(num_dead_tuples, 0)
+		  FROM pg_stat_progress_vacuum
+		  ORDER BY pid ASC
+		  
+		  
+getExtensions():
+SELECT name, current_database(), COALESCE(default_version, ''),
+			COALESCE(installed_version, ''), COALESCE(comment, '')
+		  FROM pg_available_extensions
+		  WHERE installed_version IS NOT NULL
+		  ORDER BY name ASC
+		  
+		  
+getRoles:
+SELECT R.oid, R.rolname, R.rolsuper, R.rolinherit, R.rolcreaterole,
+			R.rolcreatedb, R.rolcanlogin, R.rolreplication, R.rolbypassrls,
+			R.rolconnlimit,
+			COALESCE(EXTRACT(EPOCH FROM R.rolvaliduntil), 0),
+			ARRAY(SELECT pg_get_userbyid(M.roleid) FROM pg_auth_members AS M
+					WHERE M.member = R.oid)
+		  FROM pg_roles AS R
+		  ORDER BY R.oid ASC`
+		  
+		  
+		  
+getReplicationSlotsv94:
+SELECT slot_name, COALESCE(plugin, ''), slot_type,
+			COALESCE(database, ''), active, xmin, catalog_xmin,
+			restart_lsn, confirmed_flush_lsn, temporary,
+			@wal_status@, @safe_wal_size@, two_phase
+		  FROM pg_replication_slots
+		  ORDER BY slot_name ASC
+		  
+if c.version < pgv96 { // confirmed_flush_lsn only in pg >= 9.6
+		q = strings.Replace(q, "confirmed_flush_lsn", `''`, 1)
+	}
+	if c.version < pgv10 { // temporary only in pg >= 10
+		q = strings.Replace(q, "temporary", `FALSE`, 1)
+	}
+	if c.version < pgv13 { // wal_status and safe_wal_size only in pg >= 13
+		q = strings.Replace(q, "@wal_status@", `''`, 1)
+		q = strings.Replace(q, "@safe_wal_size@", `0::bigint`, 1)
+	} else {
+		q = strings.Replace(q, "@wal_status@", `COALESCE(wal_status, '')`, 1)
+		q = strings.Replace(q, "@safe_wal_size@", `COALESCE(safe_wal_size, 0)::bigint`, 1)
+	}
+	if c.version < pgv14 { // two_phase only in pg >= 14
+		q = strings.Replace(q, "two_phase", `FALSE`, 1)
+	}
+	rows, err := c.db.QueryContext(ctx, q)
+	
+	
+	
+getDisabledTriggers:
+SELECT T.oid, T.tgrelid, T.tgname, P.proname
+		  FROM pg_trigger AS T JOIN pg_proc AS P ON T.tgfoid = P.oid
+		  WHERE tgenabled = 'D'
+		  ORDER BY T.oid ASC
+		  
+		  
+		  
+getStatements:
+pg_stat_statements
+
+
+getStatementsv13:
+SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls,
+			total_exec_time, min_exec_time, max_exec_time, stddev_exec_time,
+			rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+			shared_blks_written, local_blks_hit, local_blks_read,
+			local_blks_dirtied, local_blks_written, temp_blks_read,
+			temp_blks_written, blk_read_time, blk_write_time,
+			plans, total_plan_time, min_plan_time, max_plan_time,
+			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint
+		  FROM pg_stat_statements
+		  ORDER BY total_exec_time DESC
+		  LIMIT $2`
+		  
+		  
+		  
+getStatementsPrev13:
+SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls, total_time,
+			min_time, max_time, stddev_time, rows, shared_blks_hit,
+			shared_blks_read, shared_blks_dirtied, shared_blks_written,
+			local_blks_hit, local_blks_read, local_blks_dirtied,
+			local_blks_written, temp_blks_read, temp_blks_written,
+			blk_read_time, blk_write_time
+		  FROM pg_stat_statements
+		  ORDER BY total_time DESC
+		  LIMIT $2
+		  
+		  
+getWALSegmentSize:
+if c.version >= pgv11 {
+		if v, err := strconv.Atoi(c.setting("wal_segment_size")); err == nil {
+			out = v
+		}
+	} else {
+		v1, err1 := strconv.Atoi(c.setting("wal_segment_size"))
+		v2, err2 := strconv.Atoi(c.setting("wal_block_size"))
+		if err1 == nil && err2 == nil {
+			out = v1 * v2
+		}
+	}
+	
+	
+	
+getWALCountsv12() {
+	q1 := `SELECT name FROM pg_ls_waldir() WHERE name ~ '^[0-9A-F]{24}$'`
+	q2 := `SELECT COUNT(*) FROM pg_ls_archive_statusdir() WHERE name ~ '^[0-9A-F]{24}.ready$'`
+
+
+getWALCountsv11() {
+	q1 := `SELECT name FROM pg_ls_waldir() WHERE name ~ '^[0-9A-F]{24}$'`
+	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_wal/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
+
+
+getWALCounts() {
+	// no one has perms for pg_ls_dir in AWS RDS, so don't try
+	if c.isAWS() {
+		c.result.WALCount = -1
+		c.result.WALReadyCount = -1
+		return
+	}
+
+	q1 := `SELECT pg_ls_dir FROM pg_ls_dir('pg_xlog') WHERE pg_ls_dir ~ '^[0-9A-F]{24}$'`
+	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
+	if c.version >= pgv10 {
+		q1 = strings.Replace(q1, "pg_xlog", "pg_wal", -1)
+		q2 = strings.Replace(q2, "pg_xlog", "pg_wal", -1)
+	}
+
+
+
+getNotification:
+SELECT pg_notification_queue_usage()
+
+
+getLockRows:
+SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted,
+       COALESCE(L.pid, 0), COALESCE(L.relation, 0), @waitstart@
+  FROM pg_locks L LEFT OUTER JOIN pg_database D ON L.database = D.oid`
+	if c.version >= pgv14 { // waitstart only in pg >= 14
+		q = strings.Replace(q, `@waitstart@`, `COALESCE(EXTRACT(EPOCH FROM waitstart)::bigint, 0)`, 1)
+	} else {
+		q = strings.Replace(q, `@waitstart@`, `0`, 1)
+	}
+	
+
+SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted,
+       COALESCE(L.pid, 0), COALESCE(L.relation, 0), '0' waitstart
+  FROM pg_locks L LEFT OUTER JOIN pg_database D ON L.database = D.oid
+;
+
+	
+getBlockers96:
+WITH P AS (SELECT DISTINCT pid FROM pg_locks WHERE NOT granted)
+SELECT pid, pg_blocking_pids(pid) FROM P`
+
+
+getBlockers() :
+q := `
+SELECT DISTINCT blocked_locks.pid AS blocked_pid, blocking_locks.pid AS blocking_pid
+ FROM  pg_catalog.pg_locks blocked_locks
+  JOIN pg_catalog.pg_locks blocking_locks 
+        ON blocking_locks.locktype = blocked_locks.locktype
+        AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+        AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+        AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+        AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+        AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+        AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+        AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+        AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+        AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+        AND blocking_locks.pid != blocked_locks.pid
+ WHERE NOT blocked_locks.GRANTED`
+	rows, err := c.db.QueryContext(ctx, q)
+
+
+
+getPublications:
+q := `WITH pc AS (SELECT pubname, COUNT(*) AS c FROM pg_publication_tables GROUP BY 1)
+			SELECT p.oid, p.pubname, current_database(), puballtables, pubinsert,
+				pubupdate, pubdelete, pc.c
+			FROM pg_publication p JOIN pc ON p.pubname = pc.pubname`
+	rows, err := c.db.QueryContext(ctx, q)
+
+
+
+getSubscriptions:
+q := `WITH
+			sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
+			swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1)
+		SELECT
+			s.oid, s.subname, current_database(), subenabled,
+			array_length(subpublications, 1) AS pubcount, sc.c AS tabcount,
+			swc.c AS workercount,
+			COALESCE(ss.received_lsn::text, ''),
+			COALESCE(ss.latest_end_lsn::text, ''),
+			ss.last_msg_send_time, ss.last_msg_receipt_time,
+			COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0)
+		FROM
+			pg_subscription s
+			JOIN sc ON s.oid = sc.srsubid
+			JOIN pg_stat_subscription ss ON s.oid = ss.subid
+			JOIN swc ON s.oid = swc.subid
+		WHERE
+			ss.relid IS NULL`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+	
+	
+	
+getPartitionInfo:
+q := `SELECT c.oid, inhparent::regclass, COALESCE(pg_get_expr(c.relpartbound, inhrelid), '')
+			FROM pg_class c JOIN pg_inherits i ON c.oid = inhrelid
+			WHERE c.relispartition`
+	rows, err := c.db.QueryContext(ctx, q)
+	
+
+
+getParentInfo:
+q := `SELECT c.oid, i.inhparent::regclass
+			FROM pg_class c JOIN pg_inherits i ON c.oid=i.inhrelid`
+	if c.version >= pgv10 { // exclude partition children in v10+
+		q += ` WHERE NOT c.relispartition`
+	}
+	
+	
+	
+getWAL():
+q := `SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write,
+			     wal_sync, wal_write_time, wal_sync_time,
+			     COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+		  FROM   pg_stat_wal
+		  LIMIT  1`
+
+
+getLogInfo():
+strings.Contains(c.setting("log_destination"), "csvlog") &&
+		c.setting("logging_collector") == "on"
+		
+SELECT COALESCE(pg_current_logfile($1)
+
+
+
+collectLogs:
+
+
+
+
+
+
+
+
+
+

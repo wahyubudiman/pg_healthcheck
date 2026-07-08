@@ -1,0 +1,51 @@
+select * from pg_stat_bgwriter;
+
+-- checkpoint setting:
+-- 
+-- by default they aren't designed for load-intensive workload, especially write load when postgres serves multiple CRUD operations. 
+-- the pg_stat_bgwriter helps to tune checkpoints’ settings in a better way. 
+-- Two columns (that show number of checkpoints occurred since last reset of stats): 
+-- - checkpoints_timed 
+-- - checkpoints_req  
+-- 
+-- General rule is very simple:
+-- checkpoints_timed value should be much higher than checkpoints_req. 
+-- It's desirable when the last one (checkpoints_req) is near zero. 
+-- It may be achieved by increasing max_wal_size (or checkpoint_segments) and checkpoint_timeout. 
+-- 
+-- Good starting point is to set:
+-- max_wal_size = 10GB 
+-- checkpoint_timeout = 30min
+-- checkpoint_completion_target = 0.9
+-- 
+-- With this settings checkpoint will occur when:
+-- - postgres will collect 10GB of WAL
+-- - or after 30 minutes from last checkpoint. 
+-- 
+-- The already running checkpoint's execution will spread over 27 minutes or until postgres again collects 9GB of WAL.
+-- 
+-- 
+-- Bgwriter settings:
+-- 
+-- - bgwriter_delay - size of sleep delay when number of processed buffers exceeded.
+-- - bgwriter_lru_maxpages - number of processed buffers after bgwriter delays.
+-- - bgwriter_lru_multiplier - multiplier used by bgwriter to calculate how many buffers need to be cleaned out in the next round.
+-- 
+-- twist maxpages and multiplier to the maximum and reduce delay to the minimum.
+-- I have never seen that bgwriter was the source of problems with overutilized disks.
+-- 
+-- Now back to pg_stat_bgwriter, using its stats we can understand some moments related to bgwriter.
+-- - maxwritten_clean shows how many times bgwriter stopped because maxpages was exceeded. 
+--   When you see high values there, you should increase bgwriter_lru_maxpages.
+-- - buffers_clean and buffers_backend show number of buffers cleaned by bgwriter and backends respectively 
+--   buffers_clean should be greater than buffers_backend. 
+--   Otherwise, you should increase bgwriter_lru_multiplier and decrease bgwriter_delay. 
+--   Note, it also may be a sign that you have insufficient shared buffers and hot part of your data 
+--   don't fit into shared buffers and forced to travel between RAM and disks.
+-- - buffers_backend_fsync shows if backends are forced to make its own fsync requests to synchronize buffers with storage. 
+--   Any values above zero point to problems with storage when fsync queue is completely filled. 
+--   The newer versions of postgres addressed these issues and I haven't seen non-zero values now for a long time.
+-- 
+-- After changing settings, I recommend resetting pg_stat_bgwriter stats with pg_stat_reset_shared('bgwriter') function 
+-- and re-check stats the next day. 
+
