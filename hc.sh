@@ -193,46 +193,66 @@ echo "some OS/hardware audit details may be empty, but the script will continue.
 echo " "
 
 
-CURRUSR=postgres
-VARTMP="null"
-read -p "Please define Linux/Unix postgres cluster user/owner (default user is ${CURRUSR}): " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define Linux/Unix postgres cluster user/owner, assume ${CURRUSR}"
-else
-   CURRUSR=${VARTMP}
+if [ -z "${CURRUSR}" ]; then
+   CURRUSR=postgres
+   VARTMP="null"
+   read -p "Please define Linux/Unix postgres cluster user/owner (default user is ${CURRUSR}): " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define Linux/Unix postgres cluster user/owner, assume ${CURRUSR}"
+   else
+      CURRUSR=${VARTMP}
+   fi
 fi
 
 #CURRUSR=`who asm i|awk '{print $1}'`
-PTEMP=`ps -fu ${CURRUSR}| grep "\-D " | grep -v grep | awk -F\-D '{print $1}' | awk '{print $NF}' | awk -F'/' '{NF--}1' | sed 's/ /\//g'`
+PTEMP=`ps -fu ${CURRUSR} 2>/dev/null | grep "\-D " | grep -v grep | awk -F\-D '{print $1}' | awk '{print $NF}' | awk -F'/' '{NF--}1' | sed 's/ /\//g'`
 PTEMP2=`echo ${PTEMP} | tr -s ' ' ':'`
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/usr/lib/udev:/lib/udev:${PTEMP2}:${PATH}
 
-CKDATA=`ps -fu ${CURRUSR} | grep "\-D " | grep -v grep | awk -F\-D '{print $2}' | sed 's/ //g' | wc -l`
-IS_REMOTE="N"
-if [[ ${CKDATA} -eq 1 ]]; then
-   export PGDATA=`ps -fu ${CURRUSR} | grep "\-D " | grep -v grep | awk -F\-D '{print $2}' | sed 's/ //g'`
-elif [[ ${CKDATA} -gt 1 ]]; then
-   echo "We detect more than 1 postgres cluster in this host"
-   echo "${CKDATA}"
-   PGDATATMP="null"
-   read -p "Please define PGDATA path you want to check: " PGDATATMP
-   if [ -z ${PGDATATMP} ]; then
-      echo "You did not define PGDATA path, exit now"
-      exit 1
+CKDATA=`ps -fu ${CURRUSR} 2>/dev/null | grep "\-D " | grep -v grep | awk -F\-D '{print $2}' | sed 's/ //g' | wc -l`
+if [ -z "${IS_REMOTE}" ]; then
+   IS_REMOTE="N"
+   if [[ ${CKDATA} -eq 1 ]]; then
+      export PGDATA=`ps -fu ${CURRUSR} | grep "\-D " | grep -v grep | awk -F\-D '{print $2}' | sed 's/ //g'`
+   elif [[ ${CKDATA} -gt 1 ]]; then
+      echo "We detect more than 1 postgres cluster in this host"
+      echo "${CKDATA}"
+      PGDATATMP="null"
+      read -p "Please define PGDATA path you want to check: " PGDATATMP
+      if [ -z ${PGDATATMP} ]; then
+         echo "You did not define PGDATA path, exit now"
+         exit 1
+      else
+         export PGDATA=${PGDATATMP}
+      fi
    else
-      export PGDATA=${PGDATATMP}
+      echo "Unable to detect local postgres cluster running in this host"
+      read -p "Is this a Docker or Remote PostgreSQL database? Y|N [N]: " IS_REMOTE_INPUT
+      IS_REMOTE_INPUT="${IS_REMOTE_INPUT:-N}"
+      IS_REMOTE_UPPER=`echo ${IS_REMOTE_INPUT} | tr '[:lower:]' '[:upper:]'`
+      if [ "${IS_REMOTE_UPPER}" = "Y" ]; then
+         IS_REMOTE="Y"
+         export PGDATA="/tmp/dummy_pgdata"
+      else
+         echo "Exit now"
+         exit 1
+      fi
    fi
 else
-   echo "Unable to detect local postgres cluster running in this host"
-   read -p "Is this a Docker or Remote PostgreSQL database? Y|N [N]: " IS_REMOTE_INPUT
-   IS_REMOTE_INPUT="${IS_REMOTE_INPUT:-N}"
-   IS_REMOTE_UPPER=`echo ${IS_REMOTE_INPUT} | tr '[:lower:]' '[:upper:]'`
-   if [ "${IS_REMOTE_UPPER}" = "Y" ]; then
-      IS_REMOTE="Y"
+   if [ "${IS_REMOTE}" = "Y" ]; then
       export PGDATA="/tmp/dummy_pgdata"
    else
-      echo "Exit now"
-      exit 1
+      if [[ ${CKDATA} -eq 1 ]]; then
+         export PGDATA=`ps -fu ${CURRUSR} | grep "\-D " | grep -v grep | awk -F\-D '{print $2}' | sed 's/ //g'`
+      elif [[ ${CKDATA} -gt 1 ]]; then
+         if [ -z "${PGDATA}" ]; then
+            echo "Multiple local clusters detected. Please set PGDATA environment variable."
+            exit 1
+         fi
+      else
+         echo "IS_REMOTE is set to N, but no local postgres cluster detected. Exit now"
+         exit 1
+      fi
    fi
 fi
 
@@ -254,50 +274,60 @@ if [ "${IS_REMOTE}" = "N" ]; then
   fi
 fi
 
-PGHOST=127.0.0.1
-VARTMP="null"
-read -p "Please define host to connect (default host is ${PGHOST}): " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define host to connect, assume ${PGHOST}"
-else
-   PGHOST=${VARTMP}
+if [ -z "${PGHOST}" ]; then
+   PGHOST=127.0.0.1
+   VARTMP="null"
+   read -p "Please define host to connect (default host is ${PGHOST}): " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define host to connect, assume ${PGHOST}"
+   else
+      PGHOST=${VARTMP}
+   fi
 fi
 
-PGPORT=5432
-VARTMP="null"
-read -p "Please define port to connect (default port is ${PGPORT}): " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define host to connect, assume ${PGPORT}"
-else
-   PGPORT=${VARTMP}
+if [ -z "${PGPORT}" ]; then
+   PGPORT=5432
+   VARTMP="null"
+   read -p "Please define port to connect (default port is ${PGPORT}): " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define port to connect, assume ${PGPORT}"
+   else
+      PGPORT=${VARTMP}
+   fi
 fi
 
-PGUSR=postgres
-VARTMP="null"
-read -p "Please define superuser in ${PGDATA} cluster (default user is ${PGUSR}): " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define superuser in ${PGDATA} cluster, assume ${PGUSR}"
-else
-   PGUSR=${VARTMP}
+if [ -z "${PGUSR}" ]; then
+   PGUSR=postgres
+   VARTMP="null"
+   read -p "Please define superuser in ${PGDATA} cluster (default user is ${PGUSR}): " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define superuser in ${PGDATA} cluster, assume ${PGUSR}"
+   else
+      PGUSR=${VARTMP}
+   fi
 fi
 
-VARTMP="null"
-read -s -p "Please define password for ${PGUSR} user: " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define password for ${PGUSR} user, exit now"
-   exit 1
-else
-   export PGPASSWORD=${VARTMP}
+if [ -z "${PGPASSWORD}" ]; then
+   VARTMP="null"
+   read -s -p "Please define password for ${PGUSR} user: " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define password for ${PGUSR} user, exit now"
+      exit 1
+   else
+      export PGPASSWORD=${VARTMP}
+   fi
+   echo " "
 fi
-echo " "
 
-DBNAME=postgres
-VARTMP="null"
-read -p "Please define database to connect (default database is ${DBNAME}): " VARTMP
-if [ -z ${VARTMP} ]; then
-   echo "You did not define database to connect, assume ${DBNAME}"
-else
-   DBNAME=${VARTMP}
+if [ -z "${DBNAME}" ]; then
+   DBNAME=postgres
+   VARTMP="null"
+   read -p "Please define database to connect (default database is ${DBNAME}): " VARTMP
+   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+      echo "You did not define database to connect, assume ${DBNAME}"
+   else
+      DBNAME=${VARTMP}
+   fi
 fi
 
 PGCONN="psql -h ${PGHOST} -p ${PGPORT} -U ${PGUSR} -d ${DBNAME} "
