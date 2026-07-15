@@ -178,11 +178,20 @@ echo "lsscsi lshw sysfsutils sg3_utils numactl dmidecode ethtool hwinfo sysstat 
 echo "lsof net-tools psmisc setools-console policycoreutils-python-utils"
 echo " "
 echo "Checking required packages..."
-rpm -q lsscsi lshw sysfsutils sg3_utils numactl dmidecode ethtool hwinfo | grep -i install
-rpm -q sysstat lsof net-tools psmisc setools-console policycoreutils-python-utils | grep -i install
+if command -v dpkg >/dev/null 2>&1; then
+   for pkg in lsscsi lshw sysfsutils sg3_utils numactl dmidecode ethtool hwinfo sysstat lsof net-tools psmisc setools-console policycoreutils-python-utils; do
+      dpkg -s "$pkg" 2>/dev/null | grep -q "Status: install ok" && echo "  $pkg: installed" || echo "  $pkg: NOT installed"
+   done
+elif command -v rpm >/dev/null 2>&1; then
+   rpm -q lsscsi lshw sysfsutils sg3_utils numactl dmidecode ethtool hwinfo 2>/dev/null | grep -v "not installed"
+   rpm -q sysstat lsof net-tools psmisc setools-console policycoreutils-python-utils 2>/dev/null | grep -v "not installed"
+else
+   echo "No package manager (dpkg or rpm) found to verify requirements."
+fi
 echo " "
-askyn "Those packages are required for better output"
-if [ ${ASK_RET} -eq 1 ]; then exit; fi
+echo "WARNING: If some packages above are NOT installed or you are not running as root,"
+echo "some OS/hardware audit details may be empty, but the script will continue."
+echo " "
 
 
 CURRUSR=postgres
@@ -382,12 +391,12 @@ parse_to_markdown() {
     BEGIN {
         print "# PostgreSQL Health Check Report\n"
         print "* **Generated on:** " gdate
-        print "* **Hostname:** `" hname "`"
-        print "* **IP Address:** `" ipaddr "`"
-        print "* **PGHOST:** `" pghost "`"
-        print "* **PGPORT:** `" pgport "`"
-        print "* **PGUSR:**  `" pgusr "`"
-        print "* **DBNAME:** `" dbname "`"
+        print "* **Hostname:** \`" hname "\`"
+        print "* **IP Address:** \`" ipaddr "\`"
+        print "* **PGHOST:** \`" pghost "\`"
+        print "* **PGPORT:** \`" pgport "\`"
+        print "* **PGUSR:**  \`" pgusr "\`"
+        print "* **DBNAME:** \`" dbname "\`"
         print "\n---\n"
         
         in_code = 0
@@ -447,7 +456,7 @@ parse_to_markdown() {
             next
         }
         
-        if (stripped ~ /^[a-zA-Z0-9_ \t\-\+\(\)\/,\.&]+:$/) {
+        if (stripped ~ /^[a-zA-Z0-9_ \t\-\+\(\)\/,\.\&]+:$/) {
             label_text = stripped
             sub(/:$/, "", label_text)
             sub(/^[ \t]+/, "", label_text)
