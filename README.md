@@ -6,26 +6,51 @@ Script ini dikembangkan dari `pg_healthcheck.sh` (Version: 1.2; https://github.c
 
 ---
 
-## Fitur Unggulan Terbaru
+## Variasi Script Healthcheck
 
-1. **Penamaan File Output Dinamis (Anti-Overwrite):**
-   Output laporan secara otomatis menggunakan prefix tanggal, waktu, dan hostname server pelaksana (`[YYYYMMDD]_[HHMMSS]_[HOSTNAME]_hc.md`). Hal ini mencegah file laporan lama tertimpa ketika script dijalankan berulang kali.
+1. **`hc-md.sh`**: Script audit standar untuk host Linux / PostgreSQL tradisional atau remote/Docker dengan mode prompt & env var.
+2. **`hc-docker.sh`**: **[TERBARU]** Script spesifik untuk PostgreSQL yang berjalan di kontainer Docker. Mendukung pengumpulan statistik kontainer (`docker inspect`, `docker stats`, `docker logs`) serta eksekusi query non-interaktif via TCP/IP atau `docker exec`.
+3. **`hc-cnpg.sh`**: Script spesifik untuk PostgreSQL yang dikelola oleh CloudNativePG (CNPG) di Kubernetes.
 
-2. **Bypass Mode untuk Database Docker & Remote:**
-   Jika script dijalankan di host VPS dan tidak mendeteksi PostgreSQL lokal (karena PostgreSQL berjalan di dalam kontainer Docker atau di server remote), script akan menawarkan opsi **Docker/Remote Database**. Pada mode ini:
-   * **Bypass File `postmaster.pid`:** Script tidak akan mati/crash karena mendeteksi file pid kosong.
-   * **Bypass `su - postgres` & `id -a postgres`:** Mencegah script meminta password sistem operasi `postgres` yang dapat memicu `su: Authentication failure`.
-   * **Bypass File Konfigurasi Fisik:** Melewati pembacaan fisik file `postgresql.conf`/`pg_hba.conf` yang berada di dalam kontainer/remote, namun **tetap mengaudit 95%+ statistik performa database** via query SQL (psql).
+---
+
+## Fitur Unggulan Script `hc-docker.sh` (Spesifik Docker)
+
+* **Otomatisasi Non-Interaktif & AI-Friendly:** Mendukung flag CLI (`-c`, `-H`, `-P`, `-u`, `-w`, `-d`, `-o`, `-e`) serta variabel lingkungan (`DOCKER_CONTAINER`, `PGHOST`, `PGPORT`, `PGUSR`, `PGPASSWORD`, `DBNAME`).
+* **Metrik Kontainer Docker:** Mengaudit status kontainer, penggunaan CPU & Memory (`docker stats`), pemetaan port, volume mount, serta log error kontainer terbaru.
+* **Dual Execution Mode:** Otomatis mencoba koneksi jaringan TCP/IP (`PGHOST:PGPORT`), dan jika dipasang flag `-e` atau koneksi TCP gagal, script otomatis beralih ke `docker exec`.
+* **Audit Database Komprehensif:** Memeriksa ukuran DB, bloat tabel/indeks, autovacuum, replikasi, query lambat, dan tabel tanpa statistik (`never_analyzed`).
+
+---
+
+## Cara Menggunakan `hc-docker.sh`
+
+### Menggunakan Flag CLI:
+```bash
+# Menjalankan health check pada kontainer 'posdb' di localhost port 5432
+./hc-docker.sh -c posdb -u postgres -w sandidb -d posdb
+
+# Menjalankan health check pada kontainer remote di IP 10.10.0.22 port 5433 untuk semua database
+./hc-docker.sh -c posdb -H 10.10.0.22 -P 5433 -u postgres -w sandidb -d all
+
+# Memaksa eksekusi query via 'docker exec' di host VPS
+./hc-docker.sh -c posdb -e
+```
+
+### Menggunakan Environment Variables (Cocok untuk OpenClaw / Automation):
+```bash
+DOCKER_CONTAINER=posdb PGHOST=10.10.0.22 PGPORT=5433 PGUSR=postgres PGPASSWORD=sandidb DBNAME=all ./hc-docker.sh
+```
 
 ---
 
 ## Prasyarat & Kebutuhan Sistem
 
 ### 1. Izin Akses (Permissions)
-* Script ini **direkomendasikan dijalankan sebagai user `root`** (menggunakan `sudo`) jika ingin melakukan audit OS & hardware host secara lengkap (`dmidecode`, `lshw`, konfigurasi LVM, dll.).
-* Jika dijalankan sebagai user biasa (non-root), bagian audit hardware tetap berjalan tetapi akan memunculkan beberapa pesan *Permission Denied* pada tool sistem. Audit database PostgreSQL-nya sendiri akan tetap berjalan normal 100%.
+* Script `hc-md.sh` **direkomendasikan dijalankan sebagai user `root`** (menggunakan `sudo`) jika ingin melakukan audit OS & hardware host secara lengkap (`dmidecode`, `lshw`, konfigurasi LVM, dll.).
+* Script `hc-docker.sh` dapat dijalankan oleh user biasa yang memiliki akses ke perintah `docker` atau akses jaringan TCP ke port PostgreSQL.
 
-### 2. Dependensi Paket Linux (Untuk Audit OS/Hardware Host)
+### 2. Dependensi Paket Linux (Untuk Audit OS/Hardware Host `hc-md.sh`)
 Pastikan paket-paket berikut terpasang di sistem operasi host Anda:
 * `lsscsi`, `lshw`, `sysfsutils`, `sg3_utils`, `numactl`, `dmidecode`, `ethtool`, `hwinfo`
 * `sysstat`, `lsof`, `net-tools`, `psmisc`, `setools-console`, `policycoreutils-python-utils`
@@ -35,43 +60,13 @@ Pastikan paket-paket berikut terpasang di sistem operasi host Anda:
 
 ---
 
-## Cara Menggunakan
-
-### Langkah 1: Persiapan awal (Opsional)
-Pastikan tidak ada file kunci/pid sisa dari eksekusi sebelumnya:
-```bash
-rm -f hc.pid hc.log.tmp
-```
-
-### Langkah 2: Jalankan Script
-Gunakan perintah `sudo` atau jalankan langsung dari terminal VPS Anda:
-```bash
-# Menjalankan sebagai root (Direkomendasikan untuk audit hardware lengkap)
-sudo ./hc-md.sh
-
-# ATAU menjalankan sebagai user biasa (Aman untuk audit Docker/Remote DB)
-./hc-md.sh
-```
-
-### Langkah 3: Isi Prompt Interaktif
-
-1. **Postgres Cluster Owner (Linux User):** Tentukan nama user OS yang menjalankan proses PostgreSQL (default: `postgres`).
-2. **Docker / Remote Bypass Prompt:** (Hanya muncul jika tidak terdeteksi PostgreSQL lokal di OS host) 
-   * Ketik **`Y`** jika database berjalan di dalam **Docker kontainer** atau **Server Remote**.
-3. **Host to Connect:** IP/Host database (default: `127.0.0.1`). *(Gunakan `127.0.0.1` jika kontainer Docker dipetakan portnya ke host localhost).*
-4. **Port to Connect:** Port database (default: `5432`).
-5. **Superuser name:** Nama user superuser database (default: `postgres`).
-6. **Password:** Sandi database superuser. *(Wajib diisi dengan benar jika menggunakan mode Docker/Remote karena koneksi terjalin lewat port TCP/IP).*
-7. **Database to Connect:** Nama database awal untuk melakukan koneksi awal (default: `postgres`).
-
----
-
 ## Hasil Output Laporan
 
-Setelah proses audit selesai (memakan waktu beberapa menit tergantung beban database), script akan mem-parsing seluruh data diagnostik menjadi file laporan tunggal:
+Setelah proses audit selesai, script akan mem-parsing seluruh data diagnostik menjadi file laporan tunggal:
 
-* **`[tanggal]_[jam]_[hostname]_hc.md`**: File laporan kesehatan akhir dalam format Markdown (misalnya: `20260708_115318_VM-16-180-opencloudos_hc.md`).
+* **`[tanggal]_[jam]_[hostname]_hc-docker.md`**: File laporan kesehatan akhir dalam format Markdown.
 
 Anda dapat memindahkan file laporan ini ke folder dokumentasi Anda atau membukanya dengan Markdown viewer/aplikasi editor (seperti VS Code atau Obsidian) untuk melihat visualisasi laporan yang rapi.
+
 
 
