@@ -102,10 +102,10 @@ Khusus untuk instance PostgreSQL yang berjalan di dalam kontainer Docker lokal m
 cd $WORKDIR/pgscript/hc
 
 # Menjalankan pada kontainer 'posdb' di port lokal 5432:
-./hc-docker.sh -c posdb -u postgres -w sandidb -d posdb
+./hc-docker.sh -c posdb -u postgres -w <db_password> -d posdb
 
 # Menjalankan pada host remote via TCP:
-./hc-docker.sh -c posdb -H 10.10.0.22 -P 5433 -u postgres -w sandidb -d all
+./hc-docker.sh -c posdb -H 192.168.1.100 -P 5433 -u postgres -w <db_password> -d all
 
 # Memaksa eksekusi query internal via 'docker exec':
 ./hc-docker.sh -c posdb -e

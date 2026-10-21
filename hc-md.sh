@@ -67,6 +67,11 @@
 # --8.3 Multi-database Replication Check
 # --8.4 Multi-database pglogical Check
 # --8.5 Query cancelled due to conflict, some are replication related
+# --9. EDB Postgres Advanced Server (EPAS) Features
+# --9.1 EPAS Profiles & Security Password Resource Limits
+# --9.2 EPAS Data Redaction Policies
+# --9.3 EPAS Synonyms Summary
+# --9.4 EPAS Specific Configuration (Dynatune, Audit, Compatibility)
 
 
 ### + check db aktifitas brp ins/upd/del, check garbage % dari pg_stat_database
@@ -124,10 +129,23 @@
 # Load env
 #. ~/.profile
 
+# Parse command line options
+AUTO_RUN=${AUTO_RUN:-0}
+for arg in "$@"; do
+   case "$arg" in
+      -y|--yes|--batch)
+         AUTO_RUN=1
+         ;;
+   esac
+done
+
 # ask function
 ASK_RET=0
 askyn() {
    ASK_RET=0
+   if [ "${AUTO_RUN:-0}" = "1" ]; then
+      return 0
+   fi
    MSG1=""
    MSG2=""
    MSG3=""
@@ -169,7 +187,9 @@ askyn() {
    done
 }
 
-clear
+if [ "${AUTO_RUN:-0}" != "1" ]; then
+   clear
+fi
 echo "Please run this script by root"
 echo "Please remove hc.log and hc.pid before run this script"
 echo " "
@@ -196,12 +216,16 @@ echo " "
 
 if [ -z "${CURRUSR}" ]; then
    CURRUSR=postgres
-   VARTMP="null"
-   read -p "Please define Linux/Unix postgres cluster user/owner (default user is ${CURRUSR}): " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define Linux/Unix postgres cluster user/owner, assume ${CURRUSR}"
+   if [ "${AUTO_RUN:-0}" = "1" ]; then
+      echo "Non-interactive mode: assuming cluster user/owner is ${CURRUSR}"
    else
-      CURRUSR=${VARTMP}
+      VARTMP="null"
+      read -p "Please define Linux/Unix postgres cluster user/owner (default user is ${CURRUSR}): " VARTMP
+      if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
+         echo "You did not define Linux/Unix postgres cluster user/owner, assume ${CURRUSR}"
+      else
+         CURRUSR=${VARTMP}
+      fi
    fi
 fi
 
@@ -277,60 +301,61 @@ fi
 
 if [ -z "${PGHOST}" ]; then
    PGHOST=127.0.0.1
-   VARTMP="null"
-   read -p "Please define host to connect (default host is ${PGHOST}): " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define host to connect, assume ${PGHOST}"
-   else
-      PGHOST=${VARTMP}
+   if [ "${AUTO_RUN:-0}" != "1" ]; then
+      VARTMP="null"
+      read -p "Please define host to connect (default host is ${PGHOST}): " VARTMP
+      if [ -n "${VARTMP}" ] && [ "${VARTMP}" != "null" ]; then
+         PGHOST=${VARTMP}
+      fi
    fi
 fi
 
 if [ -z "${PGPORT}" ]; then
    PGPORT=5432
-   VARTMP="null"
-   read -p "Please define port to connect (default port is ${PGPORT}): " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define port to connect, assume ${PGPORT}"
-   else
-      PGPORT=${VARTMP}
+   if [ "${AUTO_RUN:-0}" != "1" ]; then
+      VARTMP="null"
+      read -p "Please define port to connect (default port is ${PGPORT}): " VARTMP
+      if [ -n "${VARTMP}" ] && [ "${VARTMP}" != "null" ]; then
+         PGPORT=${VARTMP}
+      fi
    fi
 fi
 
 if [ -z "${PGUSR}" ]; then
    PGUSR=postgres
-   VARTMP="null"
-   read -p "Please define superuser in ${PGDATA} cluster (default user is ${PGUSR}): " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define superuser in ${PGDATA} cluster, assume ${PGUSR}"
-   else
-      PGUSR=${VARTMP}
+   if [ "${AUTO_RUN:-0}" != "1" ]; then
+      VARTMP="null"
+      read -p "Please define superuser in ${PGDATA} cluster (default user is ${PGUSR}): " VARTMP
+      if [ -n "${VARTMP}" ] && [ "${VARTMP}" != "null" ]; then
+         PGUSR=${VARTMP}
+      fi
    fi
 fi
 
 if [ -z "${PGPASSWORD}" ]; then
-   VARTMP="null"
-   read -s -p "Please define password for ${PGUSR} user: " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define password for ${PGUSR} user, exit now"
-      exit 1
-   else
-      export PGPASSWORD=${VARTMP}
+   if [ "${AUTO_RUN:-0}" != "1" ]; then
+      VARTMP="null"
+      read -s -p "Please define password for ${PGUSR} user: " VARTMP
+      echo " "
+      if [ -n "${VARTMP}" ] && [ "${VARTMP}" != "null" ]; then
+         export PGPASSWORD=${VARTMP}
+      fi
    fi
-   echo " "
 fi
 
 if [ -z "${DBNAME}" ]; then
    DBNAME=postgres
-   VARTMP="null"
-   read -p "Please define database to connect (default database is ${DBNAME}): " VARTMP
-   if [ -z ${VARTMP} ] || [ "${VARTMP}" = "null" ]; then
-      echo "You did not define database to connect, assume ${DBNAME}"
-   else
-      DBNAME=${VARTMP}
+   if [ "${AUTO_RUN:-0}" != "1" ]; then
+      VARTMP="null"
+      read -p "Please define database to connect (default database is ${DBNAME}): " VARTMP
+      if [ -n "${VARTMP}" ] && [ "${VARTMP}" != "null" ]; then
+         DBNAME=${VARTMP}
+      fi
    fi
 fi
 
+# Zero-Impact Query Guardrails: statement_timeout, lock_timeout, and read-only mode
+export PGOPTIONS="-c statement_timeout=15000 -c lock_timeout=5000 -c default_transaction_read_only=on"
 PGCONN="psql -h ${PGHOST} -p ${PGPORT} -U ${PGUSR} -d ${DBNAME} "
 SQLDIR=${CURDIR}/sql
 DATE_STR=$(date +%Y%m%d)
@@ -341,6 +366,38 @@ RPTFILE=${CURDIR}/${PREFIX}_hc.md
 TMPRPTFILE=${CURDIR}/${PREFIX}_hc.log.tmp
 SQLDB="select datname from pg_database where datname not in ('template0','template1') order by 1;"
 
+# Smart SQL Resolver Function (Hierarchical version lookup with fallback)
+resolve_sql_file() {
+   local sql_name="$1"
+   # 1. Version-specific folder (e.g. sql/v18/..., sql/v17/..., sql/v15/...)
+   if [ -f "${SQLDIR}/v${PG_MAJOR}/${sql_name}" ]; then
+      echo "${SQLDIR}/v${PG_MAJOR}/${sql_name}"
+      return 0
+   fi
+   # 2. If PG >= 17 and not found in v${PG_MAJOR}, check v17 (covers PG17 & PG18 checkpointer/replication changes)
+   if [ "${PG_MAJOR:-0}" -ge 17 ] 2>/dev/null && [ -f "${SQLDIR}/v17/${sql_name}" ]; then
+      echo "${SQLDIR}/v17/${sql_name}"
+      return 0
+   fi
+   # 3. If PG >= 13 and not found, check v15 (covers PG13-18 pg_stat_statements total_exec_time)
+   if [ "${PG_MAJOR:-0}" -ge 13 ] 2>/dev/null && [ -f "${SQLDIR}/v15/${sql_name}" ]; then
+      echo "${SQLDIR}/v15/${sql_name}"
+      return 0
+   fi
+   # 4. Check epas folder if EPAS is active
+   if [ "${IS_EPAS:-0}" -eq 1 ] && [ -f "${SQLDIR}/epas/${sql_name}" ]; then
+      echo "${SQLDIR}/epas/${sql_name}"
+      return 0
+   fi
+   # 5. Check common folder
+   if [ -f "${SQLDIR}/common/${sql_name}" ]; then
+      echo "${SQLDIR}/common/${sql_name}"
+      return 0
+   fi
+   # 6. Fallback to base SQLDIR
+   echo "${SQLDIR}/${sql_name}"
+}
+
 echo "Checking connection to postgres..."
 ${PGCONN} -At -c "select version();"
 EXIT_CODE=$?;
@@ -350,12 +407,25 @@ if [ ${EXIT_CODE} -ne 0 ]; then
    exit 1
 fi
 
-db_version=`${PGCONN} -At -c "select version();" | awk '{print $1,$2}'`
-db_version_tmp=`echo ${db_version} | awk '{print $2}' | awk -F "." '{print $1}'`
-db_version_tmp2=`echo ${db_version} | awk '{print $2}' | awk -F "." '{print $2}'`
-db_version_major=$((db_version_tmp*1))
-db_version_minor=$((db_version_tmp2*1))
+# Robust Version & Engine Detection
+RAW_VERSION=$(${PGCONN} -At -c "SELECT version();" 2>/dev/null || echo "")
+SERVER_VER_NUM=$(${PGCONN} -At -c "SHOW server_version_num;" 2>/dev/null || echo "0")
+PG_NUM=$((SERVER_VER_NUM * 1))
+if [ ${PG_NUM} -gt 0 ]; then
+   PG_MAJOR=$((PG_NUM / 10000))
+   PG_MINOR=$(((PG_NUM % 10000) / 100))
+else
+   PG_MAJOR=$(echo "${RAW_VERSION}" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 | cut -d. -f1)
+   PG_MINOR=$(echo "${RAW_VERSION}" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 | cut -d. -f2)
+   PG_MAJOR=${PG_MAJOR:-0}
+   PG_MINOR=${PG_MINOR:-0}
+fi
+db_version_major=${PG_MAJOR}
+db_version_minor=${PG_MINOR}
 db_big_version="${db_version_major}.${db_version_minor}"
+
+# EPAS Detection
+IS_EPAS=$(${PGCONN} -At -c "SELECT CASE WHEN version() ILIKE '%enterprisedb%' OR version() ILIKE '%advanced server%' THEN 1 ELSE 0 END;" 2>/dev/null || echo "0")
 
 #Create a report file
 if [ -f ${TMPRPTFILE} ]; then
@@ -1456,24 +1526,24 @@ ${PGCONN} <<EOF
 \echo '\n--5.0 Settings'
 \echo '\n '
 \echo '\n--5.0.1 current settings'
-\i ${SQLDIR}/pg_settings.sql
+\i $(resolve_sql_file "pg_settings.sql")
 \echo '\n '
 \echo '\n '
 \echo '\n--5.0.2 file settings'
-\i ${SQLDIR}/pg_settings_file.sql
+\i $(resolve_sql_file "pg_settings_file.sql")
 \echo '\n '
 \echo '\n '
-\i ${SQLDIR}/pg_settings_hba.sql
+\i $(resolve_sql_file "pg_settings_hba.sql")
 \echo '\n '
 \echo '\n '
 \echo '\n--5.0.3 database setting'
 \echo '\n '
-\i ${SQLDIR}/pg_settings_db.sql
+\i $(resolve_sql_file "pg_settings_db.sql")
 \echo '\n '
 \echo '\n '
 \echo '\n--5.0.4 role + database setting'
 \echo '\n '
-\i ${SQLDIR}/pg_settings_db_role.sql
+\i $(resolve_sql_file "pg_settings_db_role.sql")
 \echo '\n '
 \echo '\n '
 \echo '\n--5.1 Tablespace'
@@ -1482,13 +1552,13 @@ ${PGCONN} <<EOF
 \echo '\n '
 \echo '\n--5.2 Database Size'
 \echo '\n '
-\i ${SQLDIR}/db_size.sql
+\i $(resolve_sql_file "db_size.sql")
 \echo '\n '
 \echo '\n '
 \echo '\n--5.3 Roles/Users and Privileges'
 \du
 \echo '\n '
-\i ${SQLDIR}/role_grant.sql
+\i $(resolve_sql_file "role_grant.sql")
 \echo '\n '
 \q  
 EOF
@@ -1551,7 +1621,7 @@ echo -e " " | ${TEEFILE} > /dev/null
 
 
 echo -e "--5.6 Database XID Wraparound Healthcheck" | ${TEEFILE} > /dev/null
-${PGCONN} -f ${SQLDIR}/database_xid_age.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "database_xid_age.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
@@ -1560,7 +1630,7 @@ echo -e "\n\n--6. TOP 10 SQL since the last inspection" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e "--6.1 TOP 20 Query, CPU Time" | ${TEEFILE} > /dev/null
 if [ ${PG_STAT_STATEMENT} -eq 1 ]; then
-   ${PGCONN} -qtX -0 -f ${SQLDIR}/top20qry_cputime.sql | sed /--/g | ${TEEFILE} > /dev/null
+   ${PGCONN} -qtX -0 -f "$(resolve_sql_file "top20qry_cputime.sql")" | sed /--/g | ${TEEFILE} > /dev/null
 fi
 echo -e "\n------------------------------------------------------------------------------------------------------\n" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
@@ -1568,27 +1638,27 @@ echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "--6.2 TOP 20 Query, Number of calls" | ${TEEFILE} > /dev/null
 if [ ${PG_STAT_STATEMENT} -eq 1 ]; then
-   ${PGCONN} -qtX -0 -f ${SQLDIR}/top20qry_numcalls.sql | sed /--/g | ${TEEFILE} > /dev/null
+   ${PGCONN} -qtX -0 -f "$(resolve_sql_file "top20qry_numcalls.sql")" | sed /--/g | ${TEEFILE} > /dev/null
 fi
 echo -e "\n------------------------------------------------------------------------------------------------------\n" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "--6.3 TOP 20 Query, Single/elapsed time" | ${TEEFILE} > /dev/null
 if [ ${PG_STAT_STATEMENT} -eq 1 ]; then
-   ${PGCONN} -qtX -0 -f ${SQLDIR}/top20qry_elapsedtime.sql | sed /--/g | ${TEEFILE} > /dev/null
+   ${PGCONN} -qtX -0 -f "$(resolve_sql_file "top20qry_elapsedtime.sql")" | sed /--/g | ${TEEFILE} > /dev/null
 fi
 echo -e "\n------------------------------------------------------------------------------------------------------\n" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "--6.4 DML that still running > 15 secs" | ${TEEFILE} > /dev/null
-${PGCONN} -qtX -0 -f ${SQLDIR}/slow_dml.sql | sed /--/g | ${TEEFILE} > /dev/null
+${PGCONN} -qtX -0 -f "$(resolve_sql_file "slow_dml.sql")" | sed /--/g | ${TEEFILE} > /dev/null
 echo -e "\n------------------------------------------------------------------------------------------------------\n" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "--6.5 SELECT that still running > 15 secs" | ${TEEFILE} > /dev/null
-${PGCONN} -qtX -0 -f ${SQLDIR}/slow_qry.sql | sed /--/g | ${TEEFILE} > /dev/null
+${PGCONN} -qtX -0 -f "$(resolve_sql_file "slow_qry.sql")" | sed /--/g | ${TEEFILE} > /dev/null
 echo -e "\n------------------------------------------------------------------------------------------------------\n" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
@@ -1596,11 +1666,11 @@ echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n\n--7. database running status inspection" | ${TEEFILE} > /dev/null
 echo -e "--7.1 Number of connections" | ${TEEFILE} > /dev/null
-${PGCONN} -f ${SQLDIR}/dbconn_size.sql | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "dbconn_size.sql")" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n--7.2 Autovacuum and vacuum related" | ${TEEFILE} > /dev/null 
-${PGCONN} -f ${SQLDIR}/vacuum_settings.sql | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "vacuum_settings.sql")" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 muti_db_vacuum()
@@ -1618,7 +1688,7 @@ do
     do
        DB_URL="-h ${PGHOST} -p ${PGPORT} -d ${db_name} -U ${PGUSR}"
        echo -e "##### database ${db_name} "
-       psql ${DB_URL} -f "${SQLDIR}/${I}"
+       psql ${DB_URL} -f "$(resolve_sql_file "${I}")"
     done
 done
 return 0
@@ -1644,7 +1714,7 @@ do
     do
        DB_URL="-h ${PGHOST} -p ${PGPORT} -d ${db_name} -U ${PGUSR}"
        echo -e "##### database ${db_name} "
-       psql ${DB_URL} -f "${SQLDIR}/${I}"
+       psql ${DB_URL} -f "$(resolve_sql_file "${I}")"
     done
 done
 return 0
@@ -1656,36 +1726,36 @@ muti_db_check_file 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n\n--7.4 Rollback + Hit ratio" | ${TEEFILE} > /dev/null
-${PGCONN} -f ${SQLDIR}/rollback_hit_ratio.sql | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "rollback_hit_ratio.sql")" | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n\n--7.5 Long Transaction (> 15 secs)" | ${TEEFILE} > /dev/null
 
-if [ ${db_big_version} == '9.0' ] || [ ${db_big_version} == '9.1' ]; then
-   ${PGCONN} -xt -f ${SQLDIR}/longrun_9.sql | ${TEEFILE} > /dev/null
+if [ "${PG_MAJOR:-0}" -lt 10 ] && [ "${PG_MAJOR:-0}" -gt 0 ]; then
+   ${PGCONN} -xt -f "$(resolve_sql_file "longrun_9.sql")" | ${TEEFILE} > /dev/null
 else  
-   ${PGCONN} -xt -f ${SQLDIR}/longrun_10.sql | ${TEEFILE} > /dev/null
+   ${PGCONN} -xt -f "$(resolve_sql_file "longrun_10.sql")" | ${TEEFILE} > /dev/null
 fi
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n--7.6 bgwriter and checkpoint" | ${TEEFILE} > /dev/null 
-${PGCONN} -xt -f ${SQLDIR}/bgwriter_chkpt.sql 2> /dev/null | ${TEEFILE} > /dev/null
-${PGCONN} -xt -f ${SQLDIR}/pg_chkpt_bg_be_pct.sql 2> /dev/null | ${TEEFILE} > /dev/null
-${PGCONN} -xt -f ${SQLDIR}/bgwr-ckpt-report.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -xt -f "$(resolve_sql_file "bgwriter_chkpt.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -xt -f "$(resolve_sql_file "pg_chkpt_bg_be_pct.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -xt -f "$(resolve_sql_file "bgwr-ckpt-report.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n--8. Replication" | ${TEEFILE} > /dev/null 
 echo -e "\n--8.1 Replication settings" | ${TEEFILE} > /dev/null 
-${PGCONN} -f ${SQLDIR}/sr_sync_param.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "sr_sync_param.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 echo -e "\n--8.2 Replication status" | ${TEEFILE} > /dev/null 
 echo -e "Replication status (Master Side)" | ${TEEFILE} > /dev/null
-${PGCONN} -f ${SQLDIR}/sr_stat.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "sr_stat.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 echo -e "Replication status (Slave Side)" | ${TEEFILE} > /dev/null
-${PGCONN} -f ${SQLDIR}/pg_stat_wal_receiver.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "pg_stat_wal_receiver.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
 echo -e " " | ${TEEFILE} > /dev/null
 
 muti_db_replication_file()
@@ -1703,7 +1773,7 @@ do
     do
        DB_URL="-h ${PGHOST} -p ${PGPORT} -d ${db_name} -U ${PGUSR}"
        echo -e "##### database ${db_name} "
-       psql ${DB_URL} -f "${SQLDIR}/${I}"
+       psql ${DB_URL} -f "$(resolve_sql_file "${I}")"
     done
 done
 return 0
@@ -1729,7 +1799,7 @@ do
     do
        DB_URL="-h ${PGHOST} -p ${PGPORT} -d ${db_name} -U ${PGUSR}"
        echo -e "##### database ${db_name} "
-       psql ${DB_URL} -At -f "${SQLDIR}/${I}"
+       psql ${DB_URL} -At -f "$(resolve_sql_file "${I}")"
     done
 done
 return 0
@@ -1741,7 +1811,27 @@ echo -e " " | ${TEEFILE} > /dev/null
 
  
 echo -e "\n--8.5 Query cancelled due to conflict, some are replication related" | ${TEEFILE} > /dev/null 
-${PGCONN} -f ${SQLDIR}/db_conflict_slave.sql 2> /dev/null | ${TEEFILE} > /dev/null
+${PGCONN} -f "$(resolve_sql_file "db_conflict_slave.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+
+if [ "${IS_EPAS:-0}" -eq 1 ]; then
+   echo -e "\n\n--9. EDB Postgres Advanced Server (EPAS) Features" | ${TEEFILE} > /dev/null
+   echo -e " " | ${TEEFILE} > /dev/null
+   echo -e "--9.1 EPAS Profiles & Security Password Resource Limits" | ${TEEFILE} > /dev/null
+   ${PGCONN} -f "$(resolve_sql_file "epas_security_profiles.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+   echo -e " " | ${TEEFILE} > /dev/null
+
+   echo -e "--9.2 EPAS Data Redaction Policies" | ${TEEFILE} > /dev/null
+   ${PGCONN} -f "$(resolve_sql_file "epas_redaction_policy.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+   echo -e " " | ${TEEFILE} > /dev/null
+
+   echo -e "--9.3 EPAS Synonyms Summary" | ${TEEFILE} > /dev/null
+   ${PGCONN} -f "$(resolve_sql_file "epas_synonyms.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+   echo -e " " | ${TEEFILE} > /dev/null
+
+   echo -e "--9.4 EPAS Specific Configuration (Dynatune, Audit, Compatibility)" | ${TEEFILE} > /dev/null
+   ${PGCONN} -f "$(resolve_sql_file "epas_configuration.sql")" 2> /dev/null | ${TEEFILE} > /dev/null
+   echo -e " " | ${TEEFILE} > /dev/null
+fi
 
 
 # Delete run tag file

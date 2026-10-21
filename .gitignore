@@ -1,8 +1,32 @@
-# Ignore generated health check reports
-*_hc.md
-*_hc-cnpg.md
+# OS & Editor files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
 
-# Ignore temporary logs and run files
+# Generated Health Check Reports
+*_hc.md
+*_hc-*.md
+*.md.tmp
+
+# Temporary logs, output, and PID run files
 *.log
 *.log.tmp
+*.tmp
+*.out
 *.pid
+
+# Credentials, Keys, and Environment
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.dump
+*.tar.gz
