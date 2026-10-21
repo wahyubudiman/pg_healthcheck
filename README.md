@@ -26,7 +26,7 @@ Script komprehensif untuk server EDB EPAS (versi 15, 16, 17, hingga 18) maupun P
 ### Prasyarat Environment:
 Sebelum menjalankan, pastikan direktori kerja dan binary client EDB (`psql`) sudah diset pada environment variable:
 ```bash
-export WORKDIR=/path/to/nguserver     # Sesuaikan dengan lokasi direktori proyek Anda
+export WORKDIR=/path/to/project     # Sesuaikan dengan lokasi direktori proyek Anda
 export PATH=/usr/lib/edb-as/15/bin:$PATH
 ```
 
@@ -52,7 +52,7 @@ Script audit operasional untuk **EDB Postgres Enterprise Manager (PEM)** guna me
 
 ### Prasyarat Environment Variables:
 ```bash
-export WORKDIR=/path/to/nguserver     # Sesuaikan dengan lokasi direktori proyek Anda
+export WORKDIR=/path/to/project     # Sesuaikan dengan lokasi direktori proyek Anda
 export PATH=/usr/lib/edb-as/15/bin:$PATH
 export EDB_BIN=/usr/lib/edb-as/15/bin
 export PGDATA=/data/edb-as/15/main
